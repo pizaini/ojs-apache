@@ -1,6 +1,9 @@
 FROM php:7.4-apache
 LABEL maintainer="Pizaini <instagram.com/pizaini>"
 
+#Copy php.ini
+COPY docker/php-apache/conf/php.ini "$PHP_INI_DIR/php.ini"
+
 #Enable necessary mods
 RUN ln -s /etc/apache2/mods-available/rewrite.load /etc/apache2/mods-enabled/rewrite.load
 RUN ln -s /etc/apache2/mods-available/headers.load /etc/apache2/mods-enabled/headers.load
