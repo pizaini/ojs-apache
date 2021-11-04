@@ -16,12 +16,13 @@ COPY docker/ssl/localhost.key "$APACHE_CONFDIR/ssl/ssl.key"
 
 #Copy config files
 COPY docker/php-apache/conf/000-default.conf "$APACHE_CONFDIR/sites-available/"
-COPY docker/php-apache/conf/apache2.conf $APACHE_CONFDIR
+COPY docker/php-apache/conf/apache2.conf "$APACHE_CONFDIR/"
 
 #Enable necessary mods
 RUN ln -s /etc/apache2/mods-available/rewrite.load /etc/apache2/mods-enabled/rewrite.load
 RUN ln -s /etc/apache2/mods-available/headers.load /etc/apache2/mods-enabled/headers.load
 RUN a2enmod rewrite
+RUN a2enmod ssl
 
 #Install extension
 RUN apt-get update && apt-get install -y libmcrypt-dev openssl zip unzip libpng-dev
@@ -29,6 +30,7 @@ RUN docker-php-ext-install -j$(nproc) bcmath gd mysqli pdo_mysql gettext
 RUN docker-php-ext-enable pdo_mysql
 
 WORKDIR /var/www/html
+EXPOSE 80
 EXPOSE 443
 #Copy and chmod run.sh
 COPY docker/run.sh /run.sh
