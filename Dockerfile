@@ -16,7 +16,7 @@ COPY docker/ssl/localhost.key "$APACHE_CONFDIR/ssl/ssl.key"
 
 #Copy config files
 COPY docker/php-apache/conf/000-default.conf "$APACHE_CONFDIR/sites-available/"
-COPY docker/php-apache/conf/apache2.conf "$APACHE_CONFDIR
+COPY docker/php-apache/conf/apache2.conf $APACHE_CONFDIR
 
 #Enable necessary mods
 RUN ln -s /etc/apache2/mods-available/rewrite.load /etc/apache2/mods-enabled/rewrite.load

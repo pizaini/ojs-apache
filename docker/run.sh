@@ -6,8 +6,8 @@ if [ "$(ls -A /var/www/html)" ]
     echo "Web data does not exist. Downloading new OJS and extract it..."
     curl https://pkp.sfu.ca/ojs/download/ojs-${OJS_VERSION}.tar.gz -o ojs3.tar.gz
     mkdir /ojs-download
-    tar -xf ojs3.tar.gz -C /ojs-download
-    cp -r /ojs-download/${OJS_VERSION}/* /var/www/html/
+    tar -xzf ojs3.tar.gz -C /ojs-download
+    cp -r /ojs-download/ojs-${OJS_VERSION}/* /var/www/html/
     rm ojs3.tar.gz
 fi
 
