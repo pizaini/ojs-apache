@@ -1,5 +1,5 @@
 FROM php:7.4-apache
-LABEL maintainer="Pizaini <instagram.com/pizaini>"
+MAINTAINER pizaini <github.com/pizaini>
 
 ENV OJS_VERSION 3.3.0-8
 ENV APACHE_DOCUMENT_ROOT /var/www/html

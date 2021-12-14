@@ -31,9 +31,9 @@ docker run -p 8080:80 -p 8443:443 --name ojs-apache ojs-apache:latest
 
 ## Docker compose
 ```yaml
-ojs-pizaini:
+ojs3:
     image: pizaini/ojs-apache
-    container_name: ojs-pizaini
+    container_name: ojs3
     ports:
       - "8443:443"
       - "8080:80"
