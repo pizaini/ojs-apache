@@ -21,5 +21,5 @@ chown www-data:www-data -R /var/www/ojs-data
 
 #start services
 echo "Start services..."
-/etc/init.d/apache2 start
+apache2ctl start
 tail -f /var/log/lastlog
