@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 if [ "$(ls -A /var/www/html)" ]
   then
     echo "Web already exist..."
@@ -21,5 +22,4 @@ chown www-data:www-data -R /var/www/ojs-data
 
 #start services
 echo "Start services..."
-apache2ctl start
-tail -f /var/log/lastlog
+/usr/sbin/apache2 -D FOREGROUND
