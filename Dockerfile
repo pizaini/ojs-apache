@@ -1,4 +1,4 @@
-FROM php:7.3-apache
+FROM php:7.4-apache
 MAINTAINER pizaini <github.com/pizaini>
 
 ENV OJS_VERSION 3.3.0-11
