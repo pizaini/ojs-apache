@@ -1,7 +1,7 @@
-FROM php:7.1-apache
+FROM php:7.2-apache
 MAINTAINER pizaini <github.com/pizaini>
 
-ENV OJS_VERSION 3.1.2-4
+ENV OJS_VERSION 3.2.1-4
 ENV APACHE_DOCUMENT_ROOT /var/www/html
 ENV APACHE_RUN_DIR /var/run/apache2
 ENV APACHE_PID_FILE /var/run/apache2/httpd.pid
