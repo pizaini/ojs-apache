@@ -25,7 +25,7 @@ RUN a2enmod rewrite
 RUN a2enmod ssl
 
 #Install extension
-RUN apt-get update && apt-get install -y libmcrypt-dev openssl zip unzip libpng-dev libicu-dev g++
+RUN apt-get update && apt-get install -y libmcrypt-dev openssl zip unzip libpng-dev libicu-dev g++ zlib1g-dev
 RUN docker-php-ext-configure intl
 ENV IPE_ICU_EN_ONLY=1
 RUN docker-php-ext-install -j$(nproc) bcmath gd mysqli pdo_mysql gettext intl mcrypt
