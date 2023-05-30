@@ -26,7 +26,7 @@ RUN a2enmod ssl
 
 #Install extension
 RUN apt-get update && apt-get install -y libmcrypt-dev openssl zip unzip libpng-dev
-RUN docker-php-ext-install -j$(nproc) bcmath gd mysqli pdo_mysql gettext intl bz2 exif gmagick mcrypt
+RUN docker-php-ext-install -j$(nproc) bcmath gd mysqli pdo_mysql gettext intl mcrypt
 RUN docker-php-ext-enable pdo_mysql
 
 WORKDIR /var/www/html
