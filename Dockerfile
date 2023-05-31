@@ -25,11 +25,11 @@ RUN a2enmod rewrite
 RUN a2enmod ssl
 
 #Install extension
-RUN apt-get update && apt-get install -y libmcrypt-dev openssl zip unzip libpng-dev libicu-dev g++ zlib1g-dev supervisor
-RUN pecl install memcache-4.0.5.2
+RUN apt-get update && apt-get install -y libmcrypt-dev openssl zip unzip libpng-dev libicu-dev g++ zlib1g-dev supervisor libz-dev libmemcached-dev
+RUN pecl install memcache-4.0.5.2 memcached
 RUN docker-php-ext-configure intl
 RUN docker-php-ext-install -j$(nproc) bcmath gd mysqli pdo_mysql gettext intl
-RUN docker-php-ext-enable pdo_mysql memcache
+RUN docker-php-ext-enable pdo_mysql memcache memcached
 
 #Config supervisord
 COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
