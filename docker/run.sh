@@ -20,6 +20,16 @@ echo "Change directory owner..."
 chown www-data:www-data -R /var/www/html
 chown www-data:www-data -R /var/www/ojs-data
 
+echo "Change directory permissions..."
+# Set all to 750
+chmod 750 -R /var/www/html
+chmod 750 -R /var/www/ojs-data
+
+# set 640 for writable with no execution
+chmod 640 /var/www/html/config.inc.php
+
 #start services
 echo "Start services..."
 /usr/sbin/apache2 -D FOREGROUND
+
+#supervisord
