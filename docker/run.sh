@@ -30,6 +30,4 @@ chmod 640 /var/www/html/config.inc.php
 
 #start services
 echo "Start services..."
-/usr/sbin/apache2 -D FOREGROUND
-
-#supervisord
+supervisord
