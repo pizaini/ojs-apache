@@ -1,7 +1,7 @@
 # PHP + Apache for OJS3 production-ready
 OJS v3 docker environment with required extensions installed for simple deployment purpose
 
-##Spesifications
+## Spesifications
 * PHP 8.x
 * Custom php.ini
 * Apache web server

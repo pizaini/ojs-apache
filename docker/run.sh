@@ -9,6 +9,7 @@ if [ "$(ls -A /var/www/html)" ]
     mkdir /ojs-download
     tar -xzf ojs3.tar.gz -C /ojs-download
     cp -r /ojs-download/ojs-${OJS_VERSION}/* /var/www/html/
+    cp /var/www/html/config.TEMPLATE.inc.php /var/www/html/config.inc.php
     rm ojs3.tar.gz
 fi
 
