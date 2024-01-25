@@ -2,7 +2,7 @@
 OJS v3 docker environment with required extensions installed for simple deployment purpose
 
 ## Spesifications
-* PHP 8.x
+* PHP 8.2
 * Custom php.ini
 * Apache web server
 * Enable mod rewrite
@@ -10,6 +10,7 @@ OJS v3 docker environment with required extensions installed for simple deployme
 * Enable mod SSL
 * Expose port 80
 * Expose port 443
+* Jobs enable. See https://docs.pkp.sfu.ca/admin-guide/en/deploy-jobs
 
 ## New installation
 1. Pull this image
