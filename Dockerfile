@@ -7,7 +7,7 @@ ENV APACHE_RUN_DIR /var/run/apache2
 ENV APACHE_PID_FILE /var/run/apache2/httpd.pid
 ENV APACHE_RUN_USER www-data
 ENV APACHE_RUN_GROUP www-data
-ENV APACHE_LOG_DIR /var/www/html
+ENV APACHE_LOG_DIR /var/log/apache
 
 #Copy php.ini and SSL
 COPY docker/php-apache/conf/php.ini "$PHP_INI_DIR/php.ini"
