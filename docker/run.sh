@@ -26,8 +26,11 @@ chmod 750 -R /var/www/html
 chmod 750 -R /var/www/ojs-data
 
 # set 640 for writable with no execution
-chmod 640 /var/www/html/config.inc.php
+if [ -e /var/www/html/config.inc.php ]
+then
+    chmod 640 /var/www/html/config.inc.php
+fi
 
 #start services
 echo "Start services..."
-supervisord
+supervisord -c /etc/supervisor/conf.d/supervisord.conf
