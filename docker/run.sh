@@ -21,15 +21,11 @@ chown www-data:www-data -R /var/www/html
 chown www-data:www-data -R /var/www/ojs-data
 
 echo "Change directory permissions..."
-# Set all to 750
-chmod 750 -R /var/www/html
-chmod 750 -R /var/www/ojs-data
+#Set all directory default as 750
+find /var/www/html -type d -exec chmod 750 {} \;
 
-# set 640 for writable with no execution
-if [ -e /var/www/html/config.inc.php ]
-then
-    chmod 640 /var/www/html/config.inc.php
-fi
+#Set all files default as 640
+find /var/www/html -type f -exec chmod 640 {} \;
 
 #start services
 echo "Start services..."
