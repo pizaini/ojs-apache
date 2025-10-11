@@ -22,4 +22,4 @@ chown www-data:www-data -R /var/www/ojs-data
 
 #start services
 echo "Start services..."
-supervisord -c /etc/supervisor/conf.d/supervisord.conf
+exec supervisord -c /etc/supervisor/conf.d/supervisord.conf
