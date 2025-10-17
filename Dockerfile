@@ -1,4 +1,4 @@
-FROM php:8.2-apache
+FROM php:8.3-apache
 MAINTAINER pizaini <github.com/pizaini>
 
 ENV OJS_VERSION 3.5.0-1
@@ -27,11 +27,32 @@ RUN a2enmod rewrite
 RUN a2enmod ssl
 
 #Install extension
-RUN apt-get update && apt-get install -y libmcrypt-dev openssl zip unzip libpng-dev libicu-dev g++ zlib1g-dev supervisor libz-dev libmemcached-dev
-RUN pecl install memcache-8.2 && pecl install msgpack
-RUN docker-php-ext-configure intl
-RUN docker-php-ext-install -j$(nproc) bcmath gd mysqli pdo_mysql gettext intl
-RUN docker-php-ext-enable pdo_mysql memcache msgpack
+RUN apt-get update && apt-get install -y \
+    pkg-config \
+    make \
+    autoconf \
+    libmcrypt-dev \
+    openssl \
+    zip \
+    unzip \
+    libpng-dev \
+    libicu-dev \
+    g++ \
+    zlib1g-dev \
+    supervisor \
+    libz-dev \
+    libmemcached-dev \
+    libcurl4-openssl-dev \
+    libzip-dev \
+    libxml2-dev \
+    libonig-dev \
+ && pecl install memcache-8.2 msgpack \
+ && docker-php-ext-configure intl \
+ && docker-php-ext-install -j$(nproc) \
+        bcmath gd mysqli pdo_mysql gettext intl curl zip xml mbstring ftp \
+ && docker-php-ext-enable pdo_mysql memcache msgpack \
+ && rm -rf /var/lib/apt/lists/*
+
 
 
 #Config supervisord
