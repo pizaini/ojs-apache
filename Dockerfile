@@ -1,67 +1,153 @@
+# syntax=docker/dockerfile:1
+#
+# OJS 3 + Apache + PHP production image
+#
+# OJS source is downloaded and baked into the image at build time so container
+# starts are reproducible and do not depend on outbound internet access.
+# Override the version/checksum at build time:
+#
+#   docker build \
+#     --build-arg OJS_VERSION=3.5.0-5 \
+#     --build-arg OJS_SHA256=<sha256-of-tarball> \
+#     -t pizaini/ojs-apache:local .
+#
 FROM php:8.3-apache
-MAINTAINER pizaini <github.com/pizaini>
 
-ENV OJS_VERSION 3.5.0-5
-ENV APACHE_DOCUMENT_ROOT /var/www/html
-ENV APACHE_RUN_DIR /var/run/apache2
-ENV APACHE_PID_FILE /var/run/apache2/httpd.pid
-ENV APACHE_RUN_USER www-data
-ENV APACHE_RUN_GROUP www-data
+LABEL org.opencontainers.image.title="ojs-apache" \
+      org.opencontainers.image.description="OJS 3 with Apache and PHP, ready to run" \
+      org.opencontainers.image.authors="pizaini <https://github.com/pizaini>" \
+      org.opencontainers.image.source="https://github.com/pizaini/ojs-apache"
 
-RUN mkdir /var/log/apache
-ENV APACHE_LOG_DIR /var/log/apache
+# OJS release baked into the image (pinned, not downloaded at runtime).
+ARG OJS_VERSION=3.5.0-5
+# Optional sha256 of the release tarball. Set it to make builds verifiable.
+ARG OJS_SHA256=
 
-#Copy php.ini and SSL
-COPY docker/php-apache/conf/php.ini "$PHP_INI_DIR/php.ini"
-COPY docker/ssl/localhost.crt "$APACHE_CONFDIR/ssl/ssl.crt"
-COPY docker/ssl/localhost.key "$APACHE_CONFDIR/ssl/ssl.key"
+ENV OJS_VERSION=${OJS_VERSION} \
+    APACHE_DOCUMENT_ROOT=/var/www/html \
+    OJS_FILES_DIR=/var/www/ojs-data \
+    OJS_SESSION_DIR=/var/lib/php/sessions \
+    OJS_TARBALL=/opt/ojs/ojs-${OJS_VERSION}.tar.gz \
+    OJS_SCHEDULER_INTERVAL=300 \
+    OJS_QUEUE_SLEEP=30 \
+    OJS_REDIRECT_HTTPS=0 \
+    OJS_SSL_CN=localhost \
+    OJS_ENABLE_SSL=0 \
+    OJS_TRUSTED_PROXIES= \
+    OJS_MEMORY_LIMIT=256M \
+    OJS_OPCACHE_MB=128 \
+    OJS_OPCACHE_STRINGS_MB=16 \
+    OJS_REALPATH_KB=2048 \
+    APACHE_START_SERVERS=2 \
+    APACHE_MAX_REQUEST_WORKERS=12
 
-#Copy config files
-COPY docker/php-apache/conf/000-default.conf "$APACHE_CONFDIR/sites-available/"
-COPY docker/php-apache/conf/apache2.conf "$APACHE_CONFDIR/"
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-#Enable necessary mods
-RUN ln -s /etc/apache2/mods-available/rewrite.load /etc/apache2/mods-enabled/rewrite.load
-RUN ln -s /etc/apache2/mods-available/headers.load /etc/apache2/mods-enabled/headers.load
-RUN a2enmod rewrite
-RUN a2enmod ssl
+# Runtime + build dependencies in a single layer, cleaned immediately.
+# Note: no compiler toolchain / pecl extensions here. OJS needs none of them,
+# and they only made the image bigger and the build more fragile.
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
+        openssl \
+        supervisor \
+        zip \
+        unzip \
+        libpng-dev \
+        libjpeg-dev \
+        libfreetype6-dev \
+        libicu-dev \
+        libzip-dev \
+        libxml2-dev \
+        libonig-dev \
+        libcurl4-openssl-dev \
+        zlib1g-dev; \
+    docker-php-ext-configure gd --with-freetype --with-jpeg; \
+    docker-php-ext-install -j"$(nproc)" \
+        bcmath \
+        exif \
+        gd \
+        mysqli \
+        pdo_mysql \
+        gettext \
+        intl \
+        curl \
+        zip \
+        xml \
+        mbstring \
+        ftp \
+        opcache; \
+    rm -rf /var/lib/apt/lists/*
 
-#Install extension
-RUN apt-get update && apt-get install -y \
-    pkg-config \
-    make \
-    autoconf \
-    libmcrypt-dev \
-    openssl \
-    zip \
-    unzip \
-    libpng-dev \
-    libicu-dev \
-    g++ \
-    zlib1g-dev \
-    supervisor \
-    libz-dev \
-    libmemcached-dev \
-    libcurl4-openssl-dev \
-    libzip-dev \
-    libxml2-dev \
-    libonig-dev \
- && pecl install memcache-8.2 msgpack \
- && docker-php-ext-configure intl \
- && docker-php-ext-install -j$(nproc) \
-        bcmath gd mysqli pdo_mysql gettext intl curl zip xml mbstring ftp \
- && docker-php-ext-enable pdo_mysql memcache msgpack \
- && rm -rf /var/lib/apt/lists/*
+# Directory layout used by the entrypoint.
+# Apache logs go to /var/log/apache2 (set by /etc/apache2/envvars), which
+# supersedes any APACHE_LOG_DIR set through ENV.
+RUN set -eux; \
+    mkdir -p \
+        /etc/apache2/ssl \
+        /opt/ojs \
+        "${OJS_FILES_DIR}" \
+        "${OJS_SESSION_DIR}" \
+        "${APACHE_DOCUMENT_ROOT}"; \
+    chmod 1733 "${OJS_SESSION_DIR}"
 
+# Fetch, verify and unpack the OJS release once, at build time.
+# The code is baked into the document root (owned by www-data) so container
+# start does no copying. The tarball is kept as a restore source: it is used
+# only when the document root is empty, e.g. with a bind-mounted directory.
+RUN set -eux; \
+    url="https://pkp.sfu.ca/ojs/download/ojs-${OJS_VERSION}.tar.gz"; \
+    echo "Downloading ${url}"; \
+    curl -fsSL --retry 3 --retry-delay 5 --max-time 300 "${url}" -o "${OJS_TARBALL}"; \
+    if [ -n "${OJS_SHA256}" ]; then \
+        echo "${OJS_SHA256}  ${OJS_TARBALL}" | sha256sum -c -; \
+    else \
+        echo "WARNING: OJS_SHA256 not set, release tarball was not verified"; \
+    fi; \
+    tar -xzf "${OJS_TARBALL}" -C "${APACHE_DOCUMENT_ROOT}" --strip-components=1; \
+    test -f "${APACHE_DOCUMENT_ROOT}/index.php"; \
+    printf 'ok\n' > "${APACHE_DOCUMENT_ROOT}/healthz.txt"; \
+    chown -R www-data:www-data "${APACHE_DOCUMENT_ROOT}" "${OJS_FILES_DIR}"
 
-
-#Config supervisord
+# Configuration files.
+COPY docker/php-apache/conf/php.ini "${PHP_INI_DIR}/php.ini"
+COPY docker/php-apache/conf/apache2.conf "${APACHE_CONFDIR}/apache2.conf"
+COPY docker/php-apache/conf/000-default.conf "${APACHE_CONFDIR}/sites-available/000-default.conf"
+# Cap the worker count: the PHP image default (150) can reserve gigabytes per
+# container when many OJS instances share a host.
+COPY docker/php-apache/conf/mpm_prefork.conf "${APACHE_CONFDIR}/mods-available/mpm_prefork.conf"
+# HTTPS vhost is shipped but not enabled; the entrypoint enables it only when
+# OJS_ENABLE_SSL=1.
+COPY docker/php-apache/conf/ssl-vhost.conf "${APACHE_CONFDIR}/ojs-ssl-vhost.conf"
 COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
+# Entrypoint.
+COPY docker/run.sh /usr/local/bin/run.sh
+RUN chmod +x /usr/local/bin/run.sh
+
+# Apache modules: a2enmod handles the symlinks, no manual `ln -s` needed.
+# mod_ssl is enabled here for OJS_ENABLE_SSL=1 and disabled at runtime when the
+# container only serves port 80 behind a reverse proxy.
+RUN a2enmod rewrite headers ssl remoteip
+
 WORKDIR /var/www/html
+
+# OJS uploads / submission files. Declared as a volume so data survives
+# `docker rm` when an anonymous or named volume is used.
+VOLUME ["/var/www/ojs-data"]
+
+# Port 80 is always served. 443 is only bound when OJS_ENABLE_SSL=1; when the
+# container sits behind nginx, only 80 needs to be published.
 EXPOSE 80
 EXPOSE 443
-#Copy and chmod run.sh
-COPY docker/run.sh /run.sh
-RUN chmod +x /run.sh
-ENTRYPOINT ["/run.sh"]
+
+# Liveness probe against a static file: it proves Apache and the filesystem are
+# healthy without booting PHP or querying the database on every check. With
+# dozens of containers that difference is real load. Application-level checks
+# (PHP + DB) belong to external monitoring.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+    CMD curl -fsS -o /dev/null http://127.0.0.1/healthz.txt || exit 1
+
+ENTRYPOINT ["/usr/local/bin/run.sh"]

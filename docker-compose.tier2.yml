@@ -1,0 +1,76 @@
+# Tier 2 — standard instance (target: 10 containers)
+#
+#   OJS_PROJECT=ojs-j2 OJS_NAME=ojs-j2 OJS_PORT=8101 \
+#     docker compose -f docker-compose.tier2.yml up -d
+#
+# Memory budget per container:
+#   12 workers x 80 MB + 128 MB OPcache + queue 60 MB + scheduler 100 MB + slack
+#   = ~1536 MB limit / 768 MB reservation
+#
+# CPU: cpuset 0-5 shared by the whole fleet, burst up to 1 core, share weight 512
+# (twice Tier 1, half of Tier 3).
+name: ${OJS_PROJECT:?set OJS_PROJECT, e.g. ojs-j2}
+
+services:
+  ojs:
+    image: pizaini/ojs-apache:latest
+    container_name: ${OJS_NAME:?set OJS_NAME, e.g. ojs-j2}
+    environment:
+      OJS_SESSION_DIR: /var/lib/php/sessions
+      OJS_MEMORY_LIMIT: 256M
+      OJS_OPCACHE_MB: "128"
+      OJS_OPCACHE_STRINGS_MB: "16"
+      OJS_REALPATH_KB: "2048"
+      APACHE_MAX_REQUEST_WORKERS: "12"
+      APACHE_START_SERVERS: "2"
+      OJS_QUEUE_SLEEP: "30"
+      OJS_SCHEDULER_INTERVAL: "300"
+      OJS_ENABLE_SSL: "0"
+      OJS_REDIRECT_HTTPS: "0"
+      OJS_TRUSTED_PROXIES: ${OJS_TRUSTED_PROXIES:-172.16.0.0/12}
+    ports:
+      - "127.0.0.1:${OJS_PORT:?set OJS_PORT}:80"
+    volumes:
+      - ojs-files:/var/www/ojs-data
+      # - ./config.inc.php:/var/www/html/config.inc.php:ro
+    tmpfs:
+      - /var/lib/php/sessions:rw,noexec,nosuid,size=64m,mode=1733
+    mem_limit: 1536m
+    mem_reservation: 768m
+    mem_swappiness: 0
+    cpuset: "0-5"
+    cpus: "1.0"
+    cpu_shares: 512
+    pids_limit: 256
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    stop_grace_period: 40s
+    blkio_config:
+      weight: 500
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1/healthz.txt"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+    # Drop the ability to gain privileges through setuid binaries. Apache only
+    # ever lowers privileges (root -> www-data), so this is safe.
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - ojs-net
+
+networks:
+  ojs-net:
+    external: true
+
+volumes:
+  ojs-files:

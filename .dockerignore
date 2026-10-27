@@ -1,5 +1,9 @@
+.git
+.github
 .idea
-.gitattributes
-.gitignore
-LICENCE
+.DS_Store
+**/.DS_Store
+docker/ssl
 README.md
+LICENSE
+Security.md

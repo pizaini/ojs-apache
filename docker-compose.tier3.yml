@@ -1,0 +1,77 @@
+# Tier 3 — priority instance (target: 6 containers)
+#
+#   OJS_PROJECT=ojs-j3 OJS_NAME=ojs-j3 OJS_PORT=8201 \
+#     docker compose -f docker-compose.tier3.yml up -d
+#
+# Memory budget per container:
+#   18 workers x 80 MB + 160 MB OPcache + queue 60 MB + scheduler 100 MB + slack
+#   = ~2048 MB limit / 1536 MB reservation
+#
+# CPU: cpuset 0-5 shared by the whole fleet, burst up to 2 cores, share weight
+# 1024 (4x Tier 1). A high mem_reservation makes the kernel reclaim from the
+# lower tiers first when the host runs out of memory.
+name: ${OJS_PROJECT:?set OJS_PROJECT, e.g. ojs-j3}
+
+services:
+  ojs:
+    image: pizaini/ojs-apache:latest
+    container_name: ${OJS_NAME:?set OJS_NAME, e.g. ojs-j3}
+    environment:
+      OJS_SESSION_DIR: /var/lib/php/sessions
+      OJS_MEMORY_LIMIT: 384M
+      OJS_OPCACHE_MB: "160"
+      OJS_OPCACHE_STRINGS_MB: "24"
+      OJS_REALPATH_KB: "4096"
+      APACHE_MAX_REQUEST_WORKERS: "18"
+      APACHE_START_SERVERS: "4"
+      OJS_QUEUE_SLEEP: "15"
+      OJS_SCHEDULER_INTERVAL: "180"
+      OJS_ENABLE_SSL: "0"
+      OJS_REDIRECT_HTTPS: "0"
+      OJS_TRUSTED_PROXIES: ${OJS_TRUSTED_PROXIES:-172.16.0.0/12}
+    ports:
+      - "127.0.0.1:${OJS_PORT:?set OJS_PORT}:80"
+    volumes:
+      - ojs-files:/var/www/ojs-data
+      # - ./config.inc.php:/var/www/html/config.inc.php:ro
+    tmpfs:
+      - /var/lib/php/sessions:rw,noexec,nosuid,size=128m,mode=1733
+    mem_limit: 2048m
+    mem_reservation: 1536m
+    mem_swappiness: 0
+    cpuset: "0-5"
+    cpus: "2.0"
+    cpu_shares: 1024
+    pids_limit: 512
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    stop_grace_period: 40s
+    blkio_config:
+      weight: 900
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1/healthz.txt"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+    # Drop the ability to gain privileges through setuid binaries. Apache only
+    # ever lowers privileges (root -> www-data), so this is safe.
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - ojs-net
+
+networks:
+  ojs-net:
+    external: true
+
+volumes:
+  ojs-files:

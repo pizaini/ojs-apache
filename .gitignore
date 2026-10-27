@@ -1,3 +1,12 @@
+# OS / editor noise
+.DS_Store
+**/.DS_Store
+.idea/
+
+# OJS runtime data
 /cache/
 /config/development/
-.idea
+*.log
+
+# Generated or mounted TLS material: never commit certificates or keys
+docker/ssl/

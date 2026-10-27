@@ -1,0 +1,59 @@
+name: Build test
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - master
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image without pushing
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: ojs-apache:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Inspect Apache and PHP configuration
+        run: |
+          docker run --rm --entrypoint bash ojs-apache:ci -c '
+            set -e
+            php -v
+            php -r "exit(extension_loaded(\"gd\") && extension_loaded(\"intl\") && extension_loaded(\"pdo_mysql\") && extension_loaded(\"zip\") ? 0 : 1);"
+            php -r "exit(function_exists(\"imagecreatefromjpeg\") ? 0 : 1);"
+            php -r "exit(extension_loaded(\"Zend OPcache\") ? 0 : 1);"
+          '
+
+      - name: Smoke test the container
+        run: |
+          docker run -d --name ojs-ci -p 8080:80 ojs-apache:ci
+          for i in $(seq 1 30); do
+            if curl -fsS -o /dev/null http://127.0.0.1:8080/index.php; then
+              echo "OJS is responding"
+              break
+            fi
+            sleep 2
+          done
+          docker logs ojs-ci
+          docker exec ojs-ci apache2ctl -S
+          echo "--- default deployment must be HTTP-only on port 80 ---"
+          if docker exec ojs-ci bash -c 'apache2ctl -M | grep -q "ssl_module"'; then
+            echo "ERROR: mod_ssl is enabled, expected HTTP-only by default"
+            exit 1
+          fi
+          docker rm -f ojs-ci

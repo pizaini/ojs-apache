@@ -1,0 +1,75 @@
+# Shared infrastructure for the multi-instance OJS deployment.
+#
+#   docker compose up -d          # MariaDB + network ojs-net
+#
+# OJS itself is NOT defined here. Each journal runs its own container from one
+# of the tier files:
+#
+#   docker compose -f docker-compose.tier1.yml up -d   # 5x small
+#   docker compose -f docker-compose.tier2.yml up -d   # 10x standard
+#   docker compose -f docker-compose.tier3.yml up -d   # 6x priority
+#
+# Tuning targets for a 48 GB / 12 core host running 21 OJS instances:
+#   cores 0-5   -> OJS containers (cpuset, max 6 cores in total)
+#   cores 6-7   -> MariaDB
+#   cores 8-11  -> nginx, OS, other workloads
+#
+# OJS 3.5 stores sessions in the `sessions` table (Laravel database driver),
+# so this database is write-heavy on every page view. The settings below target
+# that workload: fewer fsyncs, larger redo log, more connections.
+services:
+  db:
+    image: mariadb:11
+    container_name: ojs-db
+    command: >
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_general_ci
+      --innodb-buffer-pool-size=4G
+      --innodb-buffer-pool-instances=4
+      --innodb-flush-log-at-trx-commit=2
+      --sync-binlog=0
+      --skip-log-bin
+      --innodb-io-capacity=2000
+      --innodb-log-file-size=1G
+      --max-connections=512
+      --table-open-cache=4000
+      --table-definition-cache=4000
+      --thread-cache-size=64
+      --tmp-table-size=64M
+      --max-heap-table-size=64M
+      --slow-query-log=1
+      --long-query-time=1
+    environment:
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:-change-me-root}
+      # One schema per journal is created by each OJS installer.
+      MARIADB_DATABASE: ${MARIADB_DATABASE:-ojs}
+      MARIADB_USER: ${MARIADB_USER:-ojs}
+      MARIADB_PASSWORD: ${MARIADB_PASSWORD:-change-me-ojs}
+    volumes:
+      - db-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    mem_limit: 8g
+    mem_reservation: 6g
+    cpuset: "6,7"
+    cpus: "2"
+    stop_grace_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "3"
+    restart: unless-stopped
+    networks:
+      - ojs-net
+
+networks:
+  ojs-net:
+    # Fixed name so the per-instance tier files can reference it as external.
+    name: ojs-net
+
+volumes:
+  db-data:
