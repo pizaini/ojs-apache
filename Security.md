@@ -66,6 +66,7 @@ Tiga peringatan sebelum menyalakan blok di atas:
 | `Options -Indexes -ExecCGI` | idem |
 | Hanya `index.php` yang boleh dieksekusi | idem |
 | `.htaccess`/`.htpasswd` tidak dapat diakses | idem |
+| `.ojs-version` (penanda versi rilis) tidak dapat diakses | idem |
 | Rewrite aman (`!-f`, `!-d`) | idem |
 | Header: `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`, `X-XSS-Protection` | `000-default.conf`, `ssl-vhost.conf` |
 | HSTS | `ssl-vhost.conf` (mode SSL internal) atau nginx (mode proxy) |
@@ -207,8 +208,9 @@ Keduanya sudah diterapkan di `docker-compose.tier1.yml`, `tier2.yml`, dan
 
 ## 6. Data dan operasional
 
-* **Backup**: volume `/var/www/ojs-data`, database MariaDB, dan
-  `config.inc.php`. Uji restore secara berkala, bukan hanya backup.
+* **Backup**: volume `ojs-files`, volume `ojs-code` (`/var/www/html` — berisi
+  tema kustom, template yang diedit, `public/`, dan `config.inc.php`), serta
+  database MariaDB. Uji restore secara berkala, bukan hanya backup.
 * **Retensi log**: log akses berisi IP dan User-Agent (PII). Rotasi sudah
   dibatasi per tier (5–20 MB × 2–3); kirim ke agregator jika butuh histori dan
   tetapkan masa simpan.

@@ -37,7 +37,7 @@ client -> nginx (TLS, optional proxy_cache)
               |
               `-> MariaDB (shared container, cores 6-7)
 
-/var/www/html      OJS code, baked into the image, owned by www-data
+/var/www/html      OJS code VOLUME (custom themes, edited templates, public/)
 /opt/ojs/<ver>.tgz release tarball kept as a restore source
 /var/www/ojs-data  files_dir (volume), sessions fallback, uploads
 ```
@@ -66,7 +66,7 @@ Startup must stay in the 1–3 second range. Do not add recursive operations ove
 
 | File | Responsibility |
 | --- | --- |
-| `Dockerfile` | base image, extensions, OJS download + checksum, baked docroot, `HEALTHCHECK` |
+| `Dockerfile` | base image, extensions, OJS download + checksum, document root seed, `HEALTHCHECK` |
 | `docker/run.sh` | entrypoint: TLS, proxy, code, PHP profile, ownership, supervisord |
 | `docker/supervisord.conf` | 3 programs, retry loops, stdout logging |
 | `docker/php-apache/conf/apache2.conf` | global Apache: rewrite, PHP handler deny rules, hardening |
@@ -77,6 +77,9 @@ Startup must stay in the 1–3 second range. Do not add recursive operations ove
 | `docker-compose.yml` | shared MariaDB + `ojs-net` network |
 | `docker-compose.tier{1,2,3}.yml` | per-journal resource profiles |
 | `docs/nginx/*` | edge cache + log format, one server block per journal |
+| `scripts/ojs-system-backup.sh` | host-side zip of `/var/www/html` (`cache/` excluded) |
+| `scripts/ojs-data-backup.sh` | host-side zip of `/var/www/ojs-data` |
+| `scripts/ojs-database-backup.sh` | host-side `mariadb-dump` + zip |
 | `Security.md` | image + OJS + nginx hardening checklist |
 | `.github/workflows/` | multi-arch publish on tags, build/smoke test on PR |
 
@@ -133,6 +136,21 @@ Break these only with an explicit decision recorded in the README.
 20. **Validate before claiming success.** At minimum: `bash -n` on shell files,
     YAML parse on compose/workflows, nginx regex checks, and `nginx -t` /
     `apache2ctl -t` inside a built image when Docker is available.
+21. **`/var/www/html` is a persistent volume** seeded from the image. It holds
+    custom themes, edited templates and `public/`, so the entrypoint must never
+    overwrite it silently. Version drift is detected through `.ojs-version` and
+    only reported, never repaired automatically.
+22. **Upgrades are manual.** There is no upgrade helper by design: the release
+    must be merged by hand after backing up both volumes and the database.
+    Whatever the operator does, never `rsync --delete`, `rm -rf` or bulk-copy
+    over the tree — that destroys custom themes and template edits.
+23. **Both volumes are mandatory** in the Dockerfile and in every tier compose:
+    `ojs-files` (`/var/www/ojs-data`) and `ojs-code` (`/var/www/html`). Both are
+    part of the backup set.
+24. **Backup scripts are host-side and cron-safe.** They must keep `cache/` out
+    of the system archive, verify each zip with `unzip -t`, chmod the archive
+    `600` (the system archive holds `config.inc.php`), keep the database password
+    out of the process arguments, and prune per archive type (`KEEP_COUNT`).
 
 ---
 
@@ -251,6 +269,14 @@ docker exec <c> apache2ctl -t
 docker exec <c> ps -eo pid,ppid,args | grep '[a]pache2'   # 3 idle, max workers+1
 docker exec <c> curl -fsS http://127.0.0.1/healthz.txt
 docker inspect --format '{{.State.Health.Status}}' <c>
+
+# database upgrade, after a manual code upgrade (see README "Upgrading")
+docker exec <c> php /var/www/html/tools/upgrade.php upgrade
+
+# host-side backups (cron-safe, default /var/backups/ojs)
+scripts/ojs-system-backup.sh ojs-j1
+scripts/ojs-data-backup.sh ojs-j1
+OJS_DB_PASSWORD=... scripts/ojs-database-backup.sh mariadb ojs ojs_backup
 ```
 
 Static validation when Docker is unavailable (common on this workstation):
@@ -280,8 +306,9 @@ PY
    deploying.
 7. **`OJS_TRUSTED_PROXIES` empty** means the real client IP is lost and
    `session_check_ip` sees the proxy address.
-8. **`/var/www/html` as a persistent volume** freezes the code and blocks image
-   upgrades.
+8. **`/var/www/html` is a volume.** Pulling a new image does not replace the
+   code; the container only warns. Upgrading is manual (README "Upgrading").
+   Never rsync `--delete` over it — that erases custom themes and template edits.
 9. **`post_max_size <= upload_max_filesize`** silently rejects large uploads.
 10. **Compiled CSS has no cache-buster**; with a 24 h TTL a theme change
     requires a purge.

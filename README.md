@@ -11,8 +11,10 @@ restricted to 6 cores.
 * PHP 8.3 with the extensions OJS requires: `gd` (with JPEG/FreeType), `intl`,
   `mysqli`/`pdo_mysql`, `zip`, `mbstring`, `curl`, `xml`, `exif`, `opcache`
 * Apache 2.4 with `mod_rewrite`, `mod_headers`, `mod_ssl`, `mod_remoteip`
-* OJS release and its document root are **baked into the image at build time**,
-  so a container start copies nothing (no 378 MB / 34,295 file burst)
+* OJS release is baked into the image and seeded into the `ojs-code` volume on
+  first start; later starts copy nothing (no 378 MB / 34,295 file burst)
+* Document root is a volume, so custom themes and template edits survive
+  restarts. Upgrading is a deliberate manual procedure (see *Upgrading*)
 * Apache worker count capped via `APACHE_MAX_REQUEST_WORKERS` (the upstream
   default of 150 can reserve ~12 GB per container)
 * Queue worker and scheduler under supervisord, running as `www-data`
@@ -28,6 +30,7 @@ restricted to 6 cores.
 docker run -d --name ojs-apache \
   -p 127.0.0.1:8080:80 \
   -v ojs-files:/var/www/ojs-data \
+  -v ojs-code:/var/www/html \
   pizaini/ojs-apache:latest
 ```
 
@@ -66,13 +69,22 @@ published on `127.0.0.1` only; nginx is the only public entry point.
 
 ## Volumes
 
-| Path | Purpose |
-| --- | --- |
-| `/var/www/ojs-data` | OJS `files_dir` (submissions, uploads, cache) — **declared as a volume, back this up** |
-| `/var/www/html` | OJS code, baked into the image. Only unpacked from the bundled tarball when empty (bind mount) |
-| `/etc/apache2/ssl` | TLS material. Only used when `OJS_ENABLE_SSL=1` |
+| Path | Volume | Purpose |
+| --- | --- | --- |
+| `/var/www/ojs-data` | `ojs-files` | OJS `files_dir`: submissions, uploads, caches — **back this up** |
+| `/var/www/html` | `ojs-code` | OJS code **plus** custom themes, edited templates and the `public/` directory — **back this up** |
+| `/etc/apache2/ssl` | — | TLS material. Only used when `OJS_ENABLE_SSL=1` |
 
-`docker rm` only loses data if `/var/www/ojs-data` was not on a volume.
+Both volumes are seeded from the image the first time they are created. After
+that the volume wins, which is what makes theme and template edits survive
+restarts, rebuilds and `docker rm`.
+
+Because `/var/www/html` is now authoritative, **image upgrades do not replace
+the code automatically** — see [Upgrading](#upgrading).
+
+Migrating a container that was created before `ojs-code` existed: copy your
+edited files out first (`docker cp <old-container>:/var/www/html/plugins ./`
+etc.), then start the new container with the volume and copy them back.
 
 ## Environment variables
 
@@ -295,34 +307,145 @@ growth, queue depth) externally.
 
 ## Backups and restore
 
-Back up:
+Three host-side scripts live in `scripts/`. They run **from the host**, reach
+into a container, and write zip archives to disk. They default to
+`/var/backups/ojs` (override with `OJS_BACKUP_DIR`), use the published image as
+the zip helper, and are safe to call from cron.
 
-1. `/var/www/ojs-data` (volume) — submissions, uploads, caches.
-2. The MariaDB database.
-3. `config.inc.php` from `/var/www/html` (it contains credentials and paths).
+| Script | Arguments | Produces |
+| --- | --- | --- |
+| `ojs-system-backup.sh` | `<ojs-container> [dir]` | `ojs-system-<datetime>.zip` (`/var/www/html`, `cache/` excluded) |
+| `ojs-data-backup.sh` | `<ojs-container> [dir]` | `ojs-data-<datetime>.zip` (all of `/var/www/ojs-data`) |
+| `ojs-database-backup.sh` | `<db-container> <db> <user> [password] [dir]` | `ojs-database-<datetime>.sql.zip` |
 
-Restore:
+Layout (one directory per target, so 21 journals never collide):
 
-1. Start the container with the target `OJS_VERSION`.
-2. Restore `files_dir` into `/var/www/ojs-data`.
-3. Restore the database.
-4. Put `config.inc.php` back (bind mount or copy).
-5. Fix ownership if the restored tree is not `www-data` — the entrypoint detects
+```
+/var/backups/ojs/
+├── ojs-j1/ojs-system-20261027-020000.zip
+├── ojs-j1/ojs-data-20261027-020005.zip
+├── ojs-j2/...
+└── db-ojs/ojs-database-20261027-020010.sql.zip
+```
+
+Behaviour:
+
+* `zip`/`unzip` run inside a throwaway container from `OJS_IMAGE`, so the host
+  does not need `zip`.
+* `unzip -t` verifies every archive before the script exits 0.
+* Archives are created with mode `600` (the system archive contains
+  `config.inc.php` with database credentials) and directories with `700`.
+* `flock` prevents overlapping cron runs per target; a second run exits 0.
+* Retention keeps the newest `KEEP_COUNT` archives **per type** (default 15,
+  `0` disables pruning).
+* The database dump uses `--single-transaction --quick --routines --triggers`,
+  so the site stays online and tables are not locked.
+
+### Cron
+
+```cron
+# /etc/ojs/backup.env  (mode 600, owned by root)
+# OJS_DB_PASSWORD=...
+# OJS_BACKUP_DIR=/var/backups/ojs
+
+# database first: consistent snapshot before the files
+10 2 * * * . /etc/ojs/backup.env; /opt/ojs/scripts/ojs-database-backup.sh mariadb ojs ojs_backup >> /var/log/ojs-backup.log 2>&1
+
+# every OJS container except the database
+15 2 * * * for c in $(docker ps --format '{{.Names}}' --filter 'name=^ojs-'); do \
+             /opt/ojs/scripts/ojs-data-backup.sh "$c"; \
+             /opt/ojs/scripts/ojs-system-backup.sh "$c"; \
+           done >> /var/log/ojs-backup.log 2>&1
+```
+
+Never put the database password directly in the crontab: it is readable and it
+shows up in the process list. Use `OJS_DB_PASSWORD`, `OJS_DB_PASSWORD_FILE`, or
+`--password-file`-style env loading as above.
+
+### Restore
+
+1. Start the container with the target `OJS_VERSION` and both volumes attached.
+2. Unzip `ojs-system-*.zip` into `/var/www/html` (it already contains
+   `config.inc.php`, custom themes and edited templates).
+3. Unzip `ojs-data-*.zip` into `/var/www/ojs-data`.
+4. Unzip `ojs-database-*.sql.zip` and import the `.sql` with `mariadb`.
+5. Check `/var/www/html/.ojs-version` against the image; the entrypoint warns on
+   mismatch.
+6. Fix ownership if the restored tree is not `www-data` — the entrypoint detects
    the wrong owner and re-chowns automatically.
+
+```bash
+# example: restore into a fresh volume pair
+docker run --rm -v ojs-j1_ojs-code:/target -v "$PWD":/in alpine \
+  sh -c 'cd /target && unzip -o /in/ojs-system-20261027-020000.zip'
+docker run --rm -v ojs-j1_ojs-files:/target -v "$PWD":/in alpine \
+  sh -c 'cd /target && unzip -o /in/ojs-data-20261027-020005.zip'
+unzip -p ojs-database-20261027-020010.sql.zip | docker exec -i mariadb \
+  sh -c 'MYSQL_PWD="$MARIADB_ROOT_PASSWORD" mariadb -uroot ojs'
+```
 
 ## Upgrading
 
-The OJS code lives in the image, so an upgrade is a new image tag. Per journal:
+The document root is a volume, so pulling a new image does **not** replace the
+code. The container logs a warning when the image and the volume disagree:
 
-```bash
-docker compose -f docker-compose.tier2.yml pull
-docker compose -f docker-compose.tier2.yml up -d
-# run the OJS upgrade wizard, then clear the edge cache:
-find /var/cache/nginx/ojs -type f -delete
+```
+[ojs-entrypoint] WARNING: code in the volume is 3.5.0-5 but the image ships 3.5.1-1.
 ```
 
-Do not point a persistent volume at `/var/www/html` if you want image upgrades
-to take effect; that path is intentionally code-only.
+There is **no automated upgrade helper on purpose**. An OJS upgrade touches
+templates, plugins and the database schema, and a bad merge is destructive. Do it
+manually, per journal, with both backups in place.
+
+### Manual upgrade checklist
+
+```bash
+# 1. back up both volumes and the database
+docker run --rm \
+  -v ojs-j2_ojs-code:/code:ro \
+  -v ojs-j2_ojs-files:/files \
+  alpine tar -czf /files/backups/html-$(date +%F).tar.gz -C /code .
+docker exec ojs-db mariadb-dump -u root -p"$MARIADB_ROOT_PASSWORD" ojs > ojs-$(date +%F).sql
+
+# 2. extract the new release from the new image, without starting it
+docker pull pizaini/ojs-apache:3.5.1-1
+docker create --name ojs-stage pizaini/ojs-apache:3.5.1-1
+docker cp ojs-stage:/opt/ojs/ojs-3.5.1-1.tar.gz ./ojs-3.5.1-1.tar.gz
+docker rm ojs-stage
+
+# 3. merge the code into the volume yourself
+#    - preserve plugins/themes/, your edited templates and config.inc.php
+#    - never use rsync --delete on the document root
+docker run --rm -v ojs-j2_ojs-code:/code -v "$PWD":/in alpine \
+  sh -c 'cd /code && tar -xzf /in/ojs-3.5.1-1.tar.gz --strip-components=1 --keep-newer-files'
+
+# 4. database upgrade
+docker compose -f docker-compose.tier2.yml up -d
+docker exec ojs-j2 php /var/www/html/tools/upgrade.php upgrade
+
+# 5. clear caches and restart
+docker exec ojs-j2 rm -rf /var/www/html/cache/*.php /var/www/html/cache/wc-*.html
+find /var/cache/nginx/ojs -type f -delete
+docker restart ojs-j2
+```
+
+Notes:
+
+* `--keep-newer-files` keeps files whose mtime is newer than the release copy,
+  which is usually your edits. Verify the diff afterwards regardless.
+* `config.inc.php`, `plugins/themes/*` and `public/` are the files most likely to
+  be customized. Confirm they survived before starting the container.
+* The alternative, arguably cleaner, path is to **recreate the code volume** from
+  the new image and re-apply your customizations from the backup. That gives a
+  pristine tree with no dead files left from the old release.
+* Update `.ojs-version` only after the code really matches, otherwise the runtime
+  warning becomes meaningless:
+
+  ```bash
+  docker exec ojs-j2 sh -c 'echo 3.5.1-1 > /var/www/html/.ojs-version'
+  ```
+
+Skip steps 2–5 only if you consciously want to stay on the old code.
 
 ## Troubleshooting
 
@@ -331,6 +454,8 @@ to take effect; that path is intentionally code-only.
 | `Can not run queue jobs ... maintenance mode` | OJS not installed yet, or `config.inc.php` missing. Expected before the installer finishes. |
 | `[queue] OJS is not installed yet` every 60 s | Same as above. |
 | `docker inspect` health `unhealthy` | `curl /healthz.txt` failing: Apache down, or `/var/www/html` replaced without OJS. |
+| `WARNING: code in the volume is X but the image ships Y` | Expected after pulling a new image. The volume wins; upgrade manually (see *Upgrading*) or recreate the code volume. |
+| Theme/template edits vanished after recreation | `/var/www/html` was not on the `ojs-code` volume; only the image content was in use. |
 | Pages look stale | nginx cache. Refresh one URL with `-H 'X-OJS-Cache-Refresh: 1'` or wipe `/var/cache/nginx/ojs`. |
 | `unknown variable "$ojs_cache_zone"` on `nginx -t` | `ojs-cache-zone.conf` not installed, or installed after the include. Both are required together. |
 | Uploads rejected at ~64 MB | `client_max_body_size` in nginx or `upload_max_filesize`/`post_max_size` in PHP. |

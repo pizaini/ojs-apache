@@ -132,8 +132,23 @@ if [ ! -f "${OJS_ROOT}/index.php" ]; then
     fi
 
     NEED_CHOWN=1
+    printf '%s\n' "${OJS_VERSION}" > "${OJS_ROOT}/.ojs-version"
 else
     log "OJS already present in ${OJS_ROOT}, skipping unpack"
+
+    # The document root may be a volume seeded by an older image. Never
+    # overwrite user edits automatically: warn and let the operator decide.
+    code_version="$(cat "${OJS_ROOT}/.ojs-version" 2>/dev/null || true)"
+    if [ -z "${code_version}" ]; then
+        log "WARNING: ${OJS_ROOT}/.ojs-version is missing, cannot verify the code version."
+        log "         The volume is authoritative; upgrade it manually (see README)."
+    elif [ "${code_version}" != "${OJS_VERSION}" ]; then
+        log "WARNING: code in the volume is ${code_version} but the image ships ${OJS_VERSION}."
+        log "         The volume wins. Upgrade manually (README: Upgrading) or"
+        log "         recreate the code volume to adopt the image version."
+    else
+        log "Code version ${code_version} matches the image"
+    fi
 fi
 
 mkdir -p "${OJS_FILES_DIR}"

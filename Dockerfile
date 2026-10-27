@@ -109,6 +109,7 @@ RUN set -eux; \
     tar -xzf "${OJS_TARBALL}" -C "${APACHE_DOCUMENT_ROOT}" --strip-components=1; \
     test -f "${APACHE_DOCUMENT_ROOT}/index.php"; \
     printf 'ok\n' > "${APACHE_DOCUMENT_ROOT}/healthz.txt"; \
+    printf '%s\n' "${OJS_VERSION}" > "${APACHE_DOCUMENT_ROOT}/.ojs-version"; \
     chown -R www-data:www-data "${APACHE_DOCUMENT_ROOT}" "${OJS_FILES_DIR}"
 
 # Configuration files.
@@ -134,9 +135,16 @@ RUN a2enmod rewrite headers ssl remoteip
 
 WORKDIR /var/www/html
 
-# OJS uploads / submission files. Declared as a volume so data survives
-# `docker rm` when an anonymous or named volume is used.
-VOLUME ["/var/www/ojs-data"]
+# Persistent locations.
+#
+#   /var/www/ojs-data  submissions, uploads, caches (back this up)
+#   /var/www/html      OJS code, plus custom themes, edited templates and the
+#                      public files directory
+#
+# The document root is seeded from the image the first time a volume is
+# attached. After that the volume wins, so pulling a new image does not replace
+# the code. Upgrading is deliberately manual: see README "Upgrading".
+VOLUME ["/var/www/ojs-data", "/var/www/html"]
 
 # Port 80 is always served. 443 is only bound when OJS_ENABLE_SSL=1; when the
 # container sits behind nginx, only 80 needs to be published.

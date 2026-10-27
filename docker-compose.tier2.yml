@@ -31,7 +31,12 @@ services:
     ports:
       - "127.0.0.1:${OJS_PORT:?set OJS_PORT}:80"
     volumes:
+      # OJS data: submissions, uploads, caches.
       - ojs-files:/var/www/ojs-data
+      # OJS code plus custom themes, edited templates and public files.
+      # Seeded from the image on first start; after that the volume wins.
+      # Upgrading is manual: see README "Upgrading".
+      - ojs-code:/var/www/html
       # - ./config.inc.php:/var/www/html/config.inc.php:ro
     tmpfs:
       - /var/lib/php/sessions:rw,noexec,nosuid,size=64m,mode=1733
@@ -74,3 +79,4 @@ networks:
 
 volumes:
   ojs-files:
+  ojs-code:
