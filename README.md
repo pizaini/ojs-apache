@@ -93,7 +93,7 @@ etc.), then start the new container with the volume and copy them back.
 | `OJS_VERSION` | build arg `3.5.0-5` | OJS release baked into the image |
 | `OJS_SHA256` | empty | Optional checksum of the OJS tarball, verified at build time |
 | `OJS_FILES_DIR` | `/var/www/ojs-data` | OJS `files_dir` |
-| `OJS_SESSION_DIR` | `/var/lib/php/sessions` | Native PHP session directory (OJS 3.5 itself uses database sessions) |
+| `OJS_SESSION_DIR` | `/var/lib/php/sessions` | Native PHP session path, fixed by the image. The tier files only mount tmpfs there; they do not override it |
 | `OJS_MEMORY_LIMIT` | `256M` | PHP `memory_limit` |
 | `OJS_OPCACHE_MB` | `128` | OPcache shared memory |
 | `OJS_OPCACHE_STRINGS_MB` | `16` | OPcache interned strings buffer |

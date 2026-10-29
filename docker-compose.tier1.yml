@@ -13,7 +13,8 @@
 #
 # Sessions: OJS 3.5 keeps sessions in MariaDB, not on disk. The tmpfs below is a
 # fallback for plugins that use native PHP sessions; it costs 32 MB of RAM and
-# zero bytes of data volume.
+# zero bytes of data volume. The path is the image default (OJS_SESSION_DIR), so
+# the tier files do not override it.
 name: ${OJS_PROJECT:?set OJS_PROJECT, e.g. ojs-j1}
 
 services:
@@ -21,7 +22,6 @@ services:
     image: pizaini/ojs-apache:latest
     container_name: ${OJS_NAME:?set OJS_NAME, e.g. ojs-j1}
     environment:
-      OJS_SESSION_DIR: /var/lib/php/sessions
       OJS_MEMORY_LIMIT: 192M
       OJS_OPCACHE_MB: "64"
       OJS_OPCACHE_STRINGS_MB: "8"

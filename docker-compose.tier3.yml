@@ -17,7 +17,6 @@ services:
     image: pizaini/ojs-apache:latest
     container_name: ${OJS_NAME:?set OJS_NAME, e.g. ojs-j3}
     environment:
-      OJS_SESSION_DIR: /var/lib/php/sessions
       OJS_MEMORY_LIMIT: 384M
       OJS_OPCACHE_MB: "160"
       OJS_OPCACHE_STRINGS_MB: "24"

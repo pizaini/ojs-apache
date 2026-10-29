@@ -162,7 +162,7 @@ tier. Adding a per-tier value must not require a rebuild.
 | Env | Lands in |
 | --- | --- |
 | `APACHE_MAX_REQUEST_WORKERS`, `APACHE_START_SERVERS` | `mpm_prefork.conf` via `${...}` substitution |
-| `OJS_MEMORY_LIMIT`, `OJS_OPCACHE_MB`, `OJS_OPCACHE_STRINGS_MB`, `OJS_REALPATH_KB`, `OJS_SESSION_DIR` | generated `zz-ojs-runtime.ini` |
+| `OJS_MEMORY_LIMIT`, `OJS_OPCACHE_MB`, `OJS_OPCACHE_STRINGS_MB`, `OJS_REALPATH_KB` | generated `zz-ojs-runtime.ini` |
 | `OJS_QUEUE_SLEEP`, `OJS_SCHEDULER_INTERVAL` | `supervisord.conf` via `%(ENV_x)s` |
 | `OJS_ENABLE_SSL`, `OJS_SSL_CN` | entrypoint: vhost symlink, cert generation |
 | `OJS_TRUSTED_PROXIES` | generated `conf-enabled/ojs-proxy.conf` |
