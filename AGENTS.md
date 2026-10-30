@@ -294,29 +294,34 @@ PY
 ## 9. Known pitfalls
 
 1. **"maintenance mode is enabled"** on a fresh container is normal:
-   `PKPApplication::isUnderMaintenance()` is true while `config.inc.php` is
-   absent. Do not "fix" it in the image.
+   `PKPApplication::isUnderMaintenance()` is true while the site is not installed
+   (`[general] installed = Off`, shipped that way in the release tarball). The
+   entrypoint only re-seeds a *missing* `config.inc.php`; it never flips
+   `installed`. Do not "fix" it in the image.
 2. **Duplicate supervisord log lines** — see rule 10.
 3. **Worker respawn loop** — see rule 11.
-4. **`http2 on;` requires nginx ≥ 1.25.1**; older releases need
+4. **Apache comments start with `#`, never `;`.** A stray `;` yields
+   `Invalid command ';'` and Apache refuses to start. The build now runs
+   `apache2ctl -t` so this fails at build time instead of at runtime.
+5. **`http2 on;` requires nginx ≥ 1.25.1**; older releases need
    `listen 443 ssl http2;`.
-5. **`blkio_config.weight`** is effective on Docker ≥ 25 with cgroup v2
+6. **`blkio_config.weight`** is effective on Docker ≥ 25 with cgroup v2
    (mapped to `io.weight`).
-6. **`cpuset` core numbering** differs per host; verify with `lscpu` before
+7. **`cpuset` core numbering** differs per host; verify with `lscpu` before
    deploying.
-7. **`OJS_TRUSTED_PROXIES` empty** means the real client IP is lost and
+8. **`OJS_TRUSTED_PROXIES` empty** means the real client IP is lost and
    `session_check_ip` sees the proxy address.
-8. **`/var/www/html` is a volume.** Pulling a new image does not replace the
+9. **`/var/www/html` is a volume.** Pulling a new image does not replace the
    code; the container only warns. Upgrading is manual (README "Upgrading").
    Never rsync `--delete` over it — that erases custom themes and template edits.
-9. **`post_max_size <= upload_max_filesize`** silently rejects large uploads.
-10. **Compiled CSS has no cache-buster**; with a 24 h TTL a theme change
+10. **`post_max_size <= upload_max_filesize`** silently rejects large uploads.
+11. **Compiled CSS has no cache-buster**; with a 24 h TTL a theme change
     requires a purge.
-11. **`page/page/css` is PHP**, not a static file. It is the second most
+12. **`page/page/css` is PHP**, not a static file. It is the second most
     expensive request per page view and must stay in the cache allow list.
-12. **MariaDB is shared**: one noisy journal can exhaust connections. Use
+13. **MariaDB is shared**: one noisy journal can exhaust connections. Use
     per-tier users with `MAX_USER_CONNECTIONS`.
-13. **`docker/.htaccess`** is not applied anywhere.
+14. **`docker/.htaccess`** is not applied anywhere.
 
 ---
 

@@ -133,6 +133,11 @@ RUN chmod +x /usr/local/bin/run.sh
 # container only serves port 80 behind a reverse proxy.
 RUN a2enmod rewrite headers ssl remoteip
 
+# Fail the build on any Apache configuration error instead of discovering it at
+# container start. Apache only understands '#' as the comment character; a stray
+# ';' (an ini habit) produces "Invalid command ';'" at runtime.
+RUN apache2ctl -t
+
 WORKDIR /var/www/html
 
 # Persistent locations.

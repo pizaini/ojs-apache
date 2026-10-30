@@ -451,8 +451,8 @@ Skip steps 2–5 only if you consciously want to stay on the old code.
 
 | Symptom | Cause / fix |
 | --- | --- |
-| `Can not run queue jobs ... maintenance mode` | OJS not installed yet, or `config.inc.php` missing. Expected before the installer finishes. |
-| `[queue] OJS is not installed yet` every 60 s | Same as above. |
+| `Can not run queue jobs ... maintenance mode` | OJS is not installed yet (`installed = Off` in `config.inc.php`). Expected before the web installer finishes. |
+| `[queue] OJS is not installed yet` every 60 s | `config.inc.php` is missing entirely. The entrypoint seeds it from `config.TEMPLATE.inc.php`; if the message persists, the document root is missing both files. |
 | `docker inspect` health `unhealthy` | `curl /healthz.txt` failing: Apache down, or `/var/www/html` replaced without OJS. |
 | `WARNING: code in the volume is X but the image ships Y` | Expected after pulling a new image. The volume wins; upgrade manually (see *Upgrading*) or recreate the code volume. |
 | Theme/template edits vanished after recreation | `/var/www/html` was not on the `ojs-code` volume; only the image content was in use. |

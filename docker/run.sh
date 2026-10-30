@@ -136,6 +136,21 @@ if [ ! -f "${OJS_ROOT}/index.php" ]; then
 else
     log "OJS already present in ${OJS_ROOT}, skipping unpack"
 
+    # The release tarball ships config.inc.php with `installed = Off`, which
+    # makes OJS report "maintenance mode" to every CLI job. A document root
+    # restored from a backup (or a volume seeded by an older image) may lack it
+    # entirely. Seed both from the template so the queue worker and scheduler
+    # can run as soon as the site is installed.
+    if [ ! -f "${OJS_ROOT}/config.inc.php" ]; then
+        if [ -f "${OJS_ROOT}/config.TEMPLATE.inc.php" ]; then
+            log "config.inc.php missing, seeding it from config.TEMPLATE.inc.php"
+            cp "${OJS_ROOT}/config.TEMPLATE.inc.php" "${OJS_ROOT}/config.inc.php"
+            NEED_CHOWN=1
+        else
+            log "WARNING: neither config.inc.php nor config.TEMPLATE.inc.php exists in ${OJS_ROOT}"
+        fi
+    fi
+
     # The document root may be a volume seeded by an older image. Never
     # overwrite user edits automatically: warn and let the operator decide.
     code_version="$(cat "${OJS_ROOT}/.ojs-version" 2>/dev/null || true)"
