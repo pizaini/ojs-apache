@@ -30,16 +30,21 @@ on the `/page/page/css` suffix, so the context prefix does not matter.
 
 | URL | TTL | Why |
 | --- | --- | --- |
-| `/` (site landing page) | 60s | busiest URL on most installs |
-| `/journal1` (journal home) | 60s | second busiest |
-| `issue/view`, `issue/archive` | 60s | table of contents |
-| `article/view` | 60s | abstract landing page |
-| `about`, `help`, `information`, `announcement`, `index` | 60s | static pages |
+| `/` (site landing page) | 5m | busiest URL on most installs |
+| `/journal1` (journal home) | 5m | second busiest |
+| `issue/view`, `issue/archive` | 5m | table of contents |
+| `article/view` | 5m | abstract landing page |
+| `about`, `help`, `information`, `announcement`, `index` | 5m | static pages |
 | `/page/page/css`, `/page/page/js` | 24h | compiled theme assets, 2 per page view |
 | `/plugins`, `/public`, `/styles`, `/js`, `/lib/pkp` assets | 7d | static files |
 
 The HTML allow list mirrors PKP's own
 `classes/core/PageRouter.php::getCacheablePages()`.
+
+TTLs above are nominal. The zone uses `inactive=1h`, so an entry that is not
+requested for an hour is evicted regardless of its TTL. In practice the 24h CSS
+and 7d asset TTLs apply to journals with steady traffic; a journal that goes
+quiet overnight re-fetches on the next visit.
 
 Never cached:
 
@@ -47,6 +52,32 @@ Never cached:
 * `login`, `user`, `submission`, `admin`, `install`
 * `api/v1`, `gateway/*`, any other `$$$call$$$` route
 * anything carrying an `OJSSID` cookie
+
+## Impact on OJS statistics
+
+Cached responses never reach PHP, and OJS records a usage event from the
+`TemplateManager::display` hook. A cache HIT therefore produces **no** entry in
+`files_dir/usageEventLogs/` and no row in the `metrics` table.
+
+With a 5 minute HTML TTL, at most **one visit per URL per 5 minutes** is
+recorded, no matter how many readers arrive:
+
+| Views of one article in 5 min | Recorded in OJS |
+| --- | --- |
+| 1 | 1 |
+| 10 | 1 |
+| 100 | 1 |
+
+Unaffected:
+
+* `article/download` (PDF/galley) — never cached, so download statistics and
+  COUNTER "Requests" stay accurate
+* logged-in traffic — always bypasses the cache
+* historical `metrics` rows — never modified
+
+If visit counts matter for reporting, either keep the busiest pages out of the
+allow list, or count traffic at the edge instead (see the access log format
+`ojs` in `ojs-cache-zone.conf`, which records every request including HITs).
 
 ## Why the cache directives look unusual
 
@@ -127,7 +158,7 @@ design:
    pages and working CSRF tokens.
 2. **One refresh per expiry**: with `proxy_cache_lock` + `proxy_cache_use_stale
    updating`, a single request repopulates an expired entry while everyone else
-   keeps receiving the stale copy. With a 60s HTML TTL that is one backend
+   keeps receiving the stale copy. With a 5m HTML TTL that is one backend
    request per minute per URL, not one per visitor.
 
 Because cached responses are served without `Set-Cookie`, anonymous visitors who
@@ -173,7 +204,7 @@ name from `$ojs_cache_zone`:
 ```nginx
 # http context — one proxy_cache_path per isolated journal
 proxy_cache_path /var/cache/nginx/ojs-j1 levels=1:2 keys_zone=ojs_j1:16m
-                 max_size=512m inactive=10m use_temp_path=off;
+                 max_size=512m inactive=1h use_temp_path=off;
 
 map $host $ojs_cache_zone {
     default              ojs;
@@ -189,20 +220,25 @@ affected. No location block has to be edited.
 * `nginx -s reload` and `systemctl restart nginx` — cache files live on disk and
   survive both. A reload also does not recompute the expiry of existing entries.
 * Changing `proxy_cache_valid` — new TTL applies to entries stored from then on.
-* Editing content in OJS — HTML entries live up to 60s, which is the intended
+* Editing content in OJS — HTML entries live up to 5 minutes, which is the intended
   trade-off.
 
 ### TTL consequences you accepted
 
 | What | TTL | Must purge when |
 | --- | --- | --- |
-| HTML pages | 60s | never (self-heals) |
+| HTML pages | 5m | never (self-heals) |
 | Compiled CSS/JS (`page/page/css`) | **24h** | theme change, plugin install/upgrade — OJS does not add a version/timestamp to these URLs, so nothing busts the cache automatically |
 | Static assets | 7d | OJS upgrade or plugin file replacement |
 
 If theme churn is frequent, lower the CSS location to `proxy_cache_valid 200
-60m` or add a purge step to your deploy script. `inactive=10m` and `max_size=8g`
-mean unused entries are dropped by the cache manager anyway.
+60m` or add a purge step to your deploy script. `max_size=8g` still caps the
+zone, and `inactive=1h` drops entries that have not been requested for an hour.
+
+Note that `inactive` bounds the effective TTL: an entry with a 24h or 7d TTL is
+still evicted after one hour without a hit. That is intentional — a 1h window
+keeps quiet journals from pinning memory for a day while keeping busy ones warm
+across the night.
 
 Shorten `proxy_cache_valid` in `ojs-server.conf` (for example `30s`) for
 journals that publish frequently.

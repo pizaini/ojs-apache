@@ -217,8 +217,8 @@ Allow list (mirrors `APP\core\PageRouter::getCacheablePages()`):
 
 | URL | TTL |
 | --- | --- |
-| `/`, `/index.php` (site landing) | 60s |
-| journal home, `index`, `about`, `help`, `information`, `announcement`, `issue/*`, `article/view` | 60s |
+| `/`, `/index.php` (site landing) | 5m |
+| journal home, `index`, `about`, `help`, `information`, `announcement`, `issue/*`, `article/view` | 5m |
 | `/page/page/css`, `/page/page/js` (compiled LESS served by PHP) | 24h |
 | static assets under `plugins/`, `public/`, `styles/`, `js/`, `lib/pkp/` | 7d |
 
