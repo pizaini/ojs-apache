@@ -31,6 +31,18 @@ log() {
     echo "[ojs-entrypoint] $*"
 }
 
+# OJS ships its own version marker. Read it instead of keeping a copy that can
+# go stale; <tag>3_5_0-5</tag> normalises to 3.5.0-5, matching OJS_VERSION.
+read_code_version() {
+    local file="${OJS_ROOT}/dbscripts/xml/version.xml"
+    [ -f "${file}" ] || return 1
+    local tag
+    tag="$(tr -d '\n' < "${file}" \
+        | sed -n 's:.*<tag>[[:space:]]*\([^<]*\)</tag>.*:\1:p')"
+    [ -n "${tag}" ] || return 1
+    printf '%s\n' "${tag//_/.}"
+}
+
 # ---------------------------------------------------------------------------
 # 1. TLS (optional)
 #
@@ -132,7 +144,6 @@ if [ ! -f "${OJS_ROOT}/index.php" ]; then
     fi
 
     NEED_CHOWN=1
-    printf '%s\n' "${OJS_VERSION}" > "${OJS_ROOT}/.ojs-version"
 else
     log "OJS already present in ${OJS_ROOT}, skipping unpack"
 
@@ -153,16 +164,30 @@ else
 
     # The document root may be a volume seeded by an older image. Never
     # overwrite user edits automatically: warn and let the operator decide.
-    code_version="$(cat "${OJS_ROOT}/.ojs-version" 2>/dev/null || true)"
-    if [ -z "${code_version}" ]; then
-        log "WARNING: ${OJS_ROOT}/.ojs-version is missing, cannot verify the code version."
-        log "         The volume is authoritative; upgrade it manually (see README)."
-    elif [ "${code_version}" != "${OJS_VERSION}" ]; then
-        log "WARNING: code in the volume is ${code_version} but the image ships ${OJS_VERSION}."
-        log "         The volume wins. Upgrade manually (README: Upgrading) or"
-        log "         recreate the code volume to adopt the image version."
+    if code_version="$(read_code_version)"; then
+        if [ "${code_version}" != "${OJS_VERSION}" ]; then
+            log "WARNING: code in the volume is ${code_version} but the image ships ${OJS_VERSION}."
+            log "         The volume wins. Upgrade manually (README: Upgrading) or"
+            log "         recreate the code volume to adopt the image version."
+        else
+            log "Code version ${code_version} matches the image"
+        fi
     else
-        log "Code version ${code_version} matches the image"
+        log "WARNING: cannot read ${OJS_ROOT}/dbscripts/xml/version.xml."
+        log "         The volume is authoritative; upgrade it manually (see README)."
+    fi
+fi
+
+# The liveness probe reads this file. Recreate it on every start so a deleted or
+# restored-away healthz.txt cannot leave the container permanently unhealthy.
+# Note: deleting it while the container runs still fails the probe until the
+# next restart; the entrypoint only runs at start.
+if [ ! -s "${OJS_ROOT}/healthz.txt" ]; then
+    log "healthz.txt missing, recreating"
+    if printf 'ok\n' > "${OJS_ROOT}/healthz.txt" 2>/dev/null; then
+        chown "${OJS_RUN_USER}:${OJS_RUN_GROUP}" "${OJS_ROOT}/healthz.txt" 2>/dev/null || true
+    else
+        log "WARNING: could not create ${OJS_ROOT}/healthz.txt (read-only mount?)"
     fi
 fi
 

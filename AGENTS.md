@@ -125,7 +125,9 @@ Break these only with an explicit decision recorded in the README.
     `api/v1`, `install`, `gateway/*`, or any `$$$call$$$` route other than
     `page/page/css|js`.
 16. **The healthcheck stays on the static `/healthz.txt`.** Pointing it back to
-    `/index.php` makes 21 containers boot PHP and hit the DB every 15–60 s.
+    `/index.php` makes 21 containers boot PHP and hit the DB every 15–60 s. The
+    entrypoint recreates the file at every start if it is missing; do not replace
+    that with a probe that depends on PHP or the database.
 17. **TLS material lives at `/etc/apache2/ssl/ssl.crt` and `ssl.key`.** Keep the
     paths stable so existing mounts keep working.
 18. **`cpuset` belongs in compose, never in the image.** Docker Desktop has too
@@ -138,8 +140,10 @@ Break these only with an explicit decision recorded in the README.
     `apache2ctl -t` inside a built image when Docker is available.
 21. **`/var/www/html` is a persistent volume** seeded from the image. It holds
     custom themes, edited templates and `public/`, so the entrypoint must never
-    overwrite it silently. Version drift is detected through `.ojs-version` and
-    only reported, never repaired automatically.
+    overwrite it silently. Version drift is read from
+    `dbscripts/xml/version.xml` (shipped with the code) and only reported, never
+    repaired automatically. There is no separate version marker file to keep in
+    sync.
 22. **Upgrades are manual.** There is no upgrade helper by design: the release
     must be merged by hand after backing up both volumes and the database.
     Whatever the operator does, never `rsync --delete`, `rm -rf` or bulk-copy
@@ -322,6 +326,10 @@ PY
 13. **MariaDB is shared**: one noisy journal can exhaust connections. Use
     per-tier users with `MAX_USER_CONNECTIONS`.
 14. **`docker/.htaccess`** is not applied anywhere.
+15. **`healthz.txt` is only restored at start.** The entrypoint recreates it when
+    missing, but deleting it while the container runs fails the probe until the
+    next restart. That is an accepted limitation of the start-only design; do not
+    "fix" it with a probe that boots PHP.
 
 ---
 

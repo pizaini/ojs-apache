@@ -302,6 +302,11 @@ That is expected. The worker starts by itself once the installer writes
 filesystem are alive without booting PHP or querying the database — meaningful
 when 21 containers probe simultaneously.
 
+The entrypoint recreates the file at every start if it is missing (for example
+after restoring a volume that predates it). Deleting it while the container runs
+still fails the probe until the next restart, because the entrypoint only runs at
+start.
+
 This is liveness only. Monitor the application (login page, `sessions` table
 growth, queue depth) externally.
 
@@ -369,8 +374,13 @@ shows up in the process list. Use `OJS_DB_PASSWORD`, `OJS_DB_PASSWORD_FILE`, or
    `config.inc.php`, custom themes and edited templates).
 3. Unzip `ojs-data-*.zip` into `/var/www/ojs-data`.
 4. Unzip `ojs-database-*.sql.zip` and import the `.sql` with `mariadb`.
-5. Check `/var/www/html/.ojs-version` against the image; the entrypoint warns on
-   mismatch.
+5. Confirm the release tag inside the restored tree matches the image:
+
+   ```bash
+   grep -o '<tag>[^<]*' /path/to/html/dbscripts/xml/version.xml
+   ```
+
+   The entrypoint reads the same file at start and warns on a mismatch.
 6. Fix ownership if the restored tree is not `www-data` — the entrypoint detects
    the wrong owner and re-chowns automatically.
 
@@ -438,12 +448,9 @@ Notes:
 * The alternative, arguably cleaner, path is to **recreate the code volume** from
   the new image and re-apply your customizations from the backup. That gives a
   pristine tree with no dead files left from the old release.
-* Update `.ojs-version` only after the code really matches, otherwise the runtime
-  warning becomes meaningless:
-
-  ```bash
-  docker exec ojs-j2 sh -c 'echo 3.5.1-1 > /var/www/html/.ojs-version'
-  ```
+* The version shown at start comes from
+  `/var/www/html/dbscripts/xml/version.xml`, which is part of the OJS code. There
+  is no separate marker to keep in sync.
 
 Skip steps 2–5 only if you consciously want to stay on the old code.
 
@@ -453,7 +460,7 @@ Skip steps 2–5 only if you consciously want to stay on the old code.
 | --- | --- |
 | `Can not run queue jobs ... maintenance mode` | OJS is not installed yet (`installed = Off` in `config.inc.php`). Expected before the web installer finishes. |
 | `[queue] OJS is not installed yet` every 60 s | `config.inc.php` is missing entirely. The entrypoint seeds it from `config.TEMPLATE.inc.php`; if the message persists, the document root is missing both files. |
-| `docker inspect` health `unhealthy` | `curl /healthz.txt` failing: Apache down, or `/var/www/html` replaced without OJS. |
+| `docker inspect` health `unhealthy` | `curl /healthz.txt` failing. Restart the container: the entrypoint recreates the file if it was deleted. If it stays unhealthy, Apache is down. |
 | `WARNING: code in the volume is X but the image ships Y` | Expected after pulling a new image. The volume wins; upgrade manually (see *Upgrading*) or recreate the code volume. |
 | Theme/template edits vanished after recreation | `/var/www/html` was not on the `ojs-code` volume; only the image content was in use. |
 | Pages look stale | nginx cache. Refresh one URL with `-H 'X-OJS-Cache-Refresh: 1'` or wipe `/var/cache/nginx/ojs`. |

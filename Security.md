@@ -66,7 +66,6 @@ Tiga peringatan sebelum menyalakan blok di atas:
 | `Options -Indexes -ExecCGI` | idem |
 | Hanya `index.php` yang boleh dieksekusi | idem |
 | `.htaccess`/`.htpasswd` tidak dapat diakses | idem |
-| `.ojs-version` (penanda versi rilis) tidak dapat diakses | idem |
 | Rewrite aman (`!-f`, `!-d`) | idem |
 | Header: `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`, `X-XSS-Protection` | `000-default.conf`, `ssl-vhost.conf` |
 | HSTS | `ssl-vhost.conf` (mode SSL internal) atau nginx (mode proxy) |

@@ -109,7 +109,6 @@ RUN set -eux; \
     tar -xzf "${OJS_TARBALL}" -C "${APACHE_DOCUMENT_ROOT}" --strip-components=1; \
     test -f "${APACHE_DOCUMENT_ROOT}/index.php"; \
     printf 'ok\n' > "${APACHE_DOCUMENT_ROOT}/healthz.txt"; \
-    printf '%s\n' "${OJS_VERSION}" > "${APACHE_DOCUMENT_ROOT}/.ojs-version"; \
     chown -R www-data:www-data "${APACHE_DOCUMENT_ROOT}" "${OJS_FILES_DIR}"
 
 # Configuration files.
